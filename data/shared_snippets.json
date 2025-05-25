@@ -1,0 +1,14 @@
+{
+    "Создание простой сессии и авторизация": {
+        "code": "<?php\nsession_start();\n\n$login = 'admin';\n$password = '1234';\n\nif ($_POST['login'] === $login && $_POST['password'] === $password) {\n    $_SESSION['user'] = $login;\n    echo \"Добро пожаловать, $login!\";\n} elseif (isset($_POST['login'])) {\n    echo \"Неверные данные!\";\n}\n?>\n\n<form method=\"POST\">\n    <input type=\"text\" name=\"login\" placeholder=\"Логин\">\n    <input type=\"password\" name=\"password\" placeholder=\"Пароль\">\n    <input type=\"submit\" value=\"Войти\">\n</form>",
+        "language": "Другой",
+        "author": "H4ckMe",
+        "uses": 4
+    },
+    "Загрузка файла на сервер": {
+        "code": "<?php\nif ($_FILES && $_FILES['file']['error'] == 0) {\n    move_uploaded_file($_FILES['file']['tmp_name'], 'uploads/' . $_FILES['file']['name']);\n    echo \"Файл успешно загружен!\";\n}\n?>\n\n<form method=\"POST\" enctype=\"multipart/form-data\">\n    <input type=\"file\" name=\"file\">\n    <input type=\"submit\" value=\"Загрузить\">\n</form>",
+        "language": "PHP",
+        "author": "H4ckMe",
+        "uses": 5
+    }
+}
