@@ -11,3 +11,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Запуск бота
 CMD ["python", "main.py"]
+
+chown -R $(whoami) ~/.cache/pip
