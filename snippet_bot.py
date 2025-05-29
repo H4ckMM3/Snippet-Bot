@@ -796,54 +796,64 @@ async def pending_snippets(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update_or_send_message(update, context, f"🖋 Сниппеты на модерации (стр. 1/{total_pages}):", reply_markup=keyboard)
 
 async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    user_data = user_manager.get_user(user.id)
-    user_data['username'] = user.username or user.full_name or f"User {user.id}"
-    await user_manager.save_users()
-    level_info = USER_LEVELS[user_data['level']]
-    snippets_count, uses_count = storage.get_user_snippets_stats(user_data['username'])
-    level_up, new_achievements = await user_manager.update_user_stats(user.id, snippets_count, uses_count)
-    profile_text = (
-        f"👨‍🎤 Профиль пользователя {user_data['username']}\n\n"
-        f"📖 Уровень: {level_info['emoji']} {level_info['name']}\n"
-        f"📩 Сниппетов: {snippets_count}\n"
-        f"👍 Общие просмотры: {uses_count}\n"
-        f"⭐ В избранном: {len(user_data['favorites'])}\n\n"
-    )
-    is_admin = admin_manager.is_admin(user.id)
-    if is_admin:
-        profile_text += "🔧 Статус: Администратор\n\n"
-    if user_data.get('achievements'):
-        profile_text += "📖 Достижения:\n"
-        for achievement in user_data['achievements']:
-            ach_info = ACHIEVEMENTS.get(achievement, {'emoji': '❓', 'name': 'Неизвестно', 'description': ''})
-            profile_text += f"{ach_info['emoji']} {ach_info['name']}: {ach_info['description']}\n"
-    else:
-        profile_text += "❌ Достижений пока нет\n"
-    if user_data['level'] < 9:
-        next_level = USER_LEVELS[user_data['level'] + 1]
-        profile_text += f"\n📈 До уровня {next_level['emoji']} {next_level['name']}:\n"
-        profile_text += f"   Сниппеты: {snippets_count}/{next_level['min_snippets']}\n"
-        profile_text += f"   Просмотры: {uses_count}/{next_level['min_uses']}\n"
-    await update_or_send_message(update, context, profile_text, reply_markup=get_main_keyboard(is_admin))
-    if new_achievements:
-        for achievement in new_achievements:
-            ach_info = ACHIEVEMENTS.get(achievement, {'emoji': '❓', 'name': 'Неизвестно', 'description': ''})
+    try:
+        user = update.effective_user
+        user_data = user_manager.get_user(user.id)
+        user_data['username'] = user.username or user.full_name or f"User {user.id}"
+        await user_manager.save_users()
+        level_info = USER_LEVELS[user_data['level']]
+        snippets_count, uses_count = storage.get_user_snippets_stats(user_data['username'])
+        level_up, new_achievements = await user_manager.update_user_stats(user.id, snippets_count, uses_count)
+        profile_text = (
+            f"👨‍🎤 Профиль пользователя {user_data['username']}\n\n"
+            f"📖 Уровень: {level_info['emoji']} {level_info['name']}\n"
+            f"📩 Сниппетов: {snippets_count}\n"
+            f"👍 Общие просмотры: {uses_count}\n"
+            f"⭐ В избранном: {len(user_data['favorites'])}\n\n"
+        )
+        is_admin = admin_manager.is_admin(user.id)
+        if is_admin:
+            profile_text += "🔧 Статус: Администратор\n\n"
+        if user_data.get('achievements'):
+            profile_text += "📖 Достижения:\n"
+            for achievement in user_data['achievements']:
+                ach_info = ACHIEVEMENTS.get(achievement, {'emoji': '❓', 'name': 'Неизвестно', 'description': ''})
+                profile_text += f"{ach_info['emoji']} {ach_info['name']}: {ach_info['description']}\n"
+        else:
+            profile_text += "❌ Достижений пока нет\n"
+        if user_data['level'] < 9:
+            next_level = USER_LEVELS[user_data['level'] + 1]
+            profile_text += f"\n📈 До уровня {next_level['emoji']} {next_level['name']}:\n"
+            profile_text += f"   Сниппеты: {snippets_count}/{next_level['min_snippets']}\n"
+            profile_text += f"   Просмотры: {uses_count}/{next_level['min_uses']}\n"
+        await update_or_send_message(update, context, profile_text, reply_markup=get_main_keyboard(is_admin))
+        if new_achievements:
+            for achievement in new_achievements:
+                ach_info = ACHIEVEMENTS.get(achievement, {'emoji': '❓', 'name': 'Неизвестно', 'description': ''})
+                await update_or_send_message(
+                    update,
+                    context,
+                    f"🎉 Новое достижение!\n{ach_info['emoji']} {ach_info['name']}\n{ach_info['description']}",
+                    force_new=True
+                )
+        if level_up:
             await update_or_send_message(
                 update,
                 context,
-                f"🎉 Новое достижение!\n{ach_info['emoji']} {ach_info['name']}\n{ach_info['description']}",
+                f"🎊 Поздравляем! Вы достигли уровня {level_info['emoji']} {level_info['name']}!",
                 force_new=True
             )
-    if level_up:
+        if random.random() < MEME_PROBABILITY:
+            await send_random_meme(update, context, user.id)
+    except Exception as e:
+        logger.error(f"Ошибка в show_profile: {e}", exc_info=True)
+        is_admin = admin_manager.is_admin(update.effective_user.id)
         await update_or_send_message(
             update,
             context,
-            f"🎊 Поздравляем! Вы достигли уровня {level_info['emoji']} {level_info['name']}!",
-            force_new=True
+            "❌ Ошибка при отображении профиля. Попробуйте снова.",
+            reply_markup=get_main_keyboard(is_admin)
         )
-    if random.random() < MEME_PROBABILITY:
-        await send_random_meme(update, context, user.id)
 
 async def show_filters(update: Update, context: ContextTypes.DEFAULT_TYPE):
     is_admin = admin_manager.is_admin(update.effective_user.id)
@@ -1140,75 +1150,101 @@ async def get_snippet_code(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     return GET_CODE
 
 async def done_adding_code(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    snippet_name = context.user_data.get('snippet_name')
-    code = context.user_data.get('code')
-    language = context.user_data.get('language')
-    tags = context.user_data.get('tags', [])
-    author = update.effective_user.username or update.effective_user.full_name
-    author_id = update.effective_user.id
-    start_time = context.user_data.get('snippet_start_time')
+    try:
+        snippet_name = context.user_data.get('snippet_name')
+        code = context.user_data.get('code')
+        language = context.user_data.get('language')
+        tags = context.user_data.get('tags', [])
+        author = update.effective_user.username or update.effective_user.full_name or f"User {update.effective_user.id}"
+        author_id = update.effective_user.id
+        start_time = context.user_data.get('snippet_start_time')
 
-    if await storage.add_pending_snippet(snippet_name, code, language, author, author_id, tags):
-        is_admin = admin_manager.is_admin(update.effective_user.id)
-        await update_or_send_message(
-            update,
-            context,
-            f"✅ Сниппет '{snippet_name}' отправлен на модерацию!\n"
-            f"{LANGUAGES.get(language, '📜')} Язык: {language}\n"
-            f"🗂️ Теги: {', '.join(tags) if tags else 'Без тегов'}\n"
-            f"👤 Автор: {author}",
-            reply_markup=get_main_keyboard(is_admin)
-        )
-        await notify_admins(context, snippet_name, storage.pending_snippets[snippet_name])
-        if random.random() < MEME_PROBABILITY:
-            await send_random_meme(update, context, author_id)
-        # Проверка достижений
-        user = user_manager.get_user(author_id)
-        current_time = datetime.now()
-        current_hour = current_time.hour
-        if start_time:
-            elapsed_time = (current_time - start_time).total_seconds()
-            if elapsed_time < 60 and 'speed_coder' not in user['achievements']:  # Менее 1 минуты
-                user['achievements'].append('speed_coder')
+        if not all([snippet_name, code, language, author_id]):
+            is_admin = admin_manager.is_admin(update.effective_user.id)
+            await update_or_send_message(
+                update,
+                context,
+                "❌ Ошибка: неполные данные для сниппета!",
+                reply_markup=get_main_keyboard(is_admin)
+            )
+            context.user_data.clear()
+            return ConversationHandler.END
+
+        if await storage.add_pending_snippet(snippet_name, code, language, author, author_id, tags):
+            is_admin = admin_manager.is_admin(update.effective_user.id)
+            await update_or_send_message(
+                update,
+                context,
+                f"✅ Сниппет '{snippet_name}' отправлен на модерацию!\n"
+                f"{LANGUAGES.get(language, '📜')} Язык: {language}\n"
+                f"🗂️ Теги: {', '.join(tags) if tags else 'Без тегов'}\n"
+                f"👤 Автор: {author}",
+                reply_markup=get_main_keyboard(is_admin)
+            )
+            try:
+                await notify_admins(context, snippet_name, storage.pending_snippets[snippet_name])
+            except Exception as e:
+                logger.error(f"Ошибка в notify_admins: {e}", exc_info=True)
+
+            # Проверка достижений
+            user = user_manager.get_user(author_id)
+            current_time = datetime.now()
+            current_hour = current_time.hour
+            new_achievements = []
+
+            if start_time:
+                elapsed_time = (current_time - start_time).total_seconds()
+                if elapsed_time < 60 and 'speed_coder' not in user['achievements']:
+                    user['achievements'].append('speed_coder')
+                    new_achievements.append('speed_coder')
+            if 5 <= current_hour < 7 and 'early_bird' not in user['achievements']:
+                user['achievements'].append('early_bird')
+                new_achievements.append('early_bird')
+            if (23 <= current_hour or current_hour < 3) and 'night_owl' not in user['achievements']:
+                user['achievements'].append('night_owl')
+                new_achievements.append('night_owl')
+            if len(code) > 1000 and 'code_crafter' not in user['achievements']:
+                user['achievements'].append('code_crafter')
+                new_achievements.append('code_crafter')
+
+            if new_achievements:
                 await user_manager.save_users()
-                await context.bot.send_message(
-                    chat_id=update.effective_chat.id,
-                    text=f"🎉 Новое достижение!\n{ACHIEVEMENTS['speed_coder']['emoji']} {ACHIEVEMENTS['speed_coder']['name']}\n"
-                         f"{ACHIEVEMENTS['speed_coder']['description']}"
-                )
-        if 5 <= current_hour < 7 and 'early_bird' not in user['achievements']:
-            user['achievements'].append('early_bird')
-            await user_manager.save_users()
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text=f"🎉 Новое достижение!\n{ACHIEVEMENTS['early_bird']['emoji']} {ACHIEVEMENTS['early_bird']['name']}\n"
-                     f"{ACHIEVEMENTS['early_bird']['description']}"
+                for achievement in new_achievements:
+                    ach_info = ACHIEVEMENTS.get(achievement, {'emoji': '❓', 'name': 'Неизвестно', 'description': ''})
+                    try:
+                        await update_or_send_message(
+                            update,
+                            context,
+                            f"🎉 Новое достижение!\n{ach_info['emoji']} {ach_info['name']}\n{ach_info['description']}",
+                            force_new=True
+                        )
+                    except TelegramError as e:
+                        logger.error(f"Ошибка при отправке уведомления о достижении {achievement}: {e}", exc_info=True)
+
+            if random.random() < MEME_PROBABILITY:
+                try:
+                    await send_random_meme(update, context, author_id)
+                except Exception as e:
+                    logger.error(f"Ошибка в send_random_meme: {e}", exc_info=True)
+        else:
+            is_admin = admin_manager.is_admin(update.effective_user.id)
+            await update_or_send_message(
+                update,
+                context,
+                f"❌ Ошибка: Сниппет с именем '{snippet_name}' уже существует или превышены лимиты длины!",
+                reply_markup=get_main_keyboard(is_admin)
             )
-        if (23 <= current_hour or current_hour < 3) and 'night_owl' not in user['achievements']:
-            user['achievements'].append('night_owl')
-            await user_manager.save_users()
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text=f"🎉 Новое достижение!\n{ACHIEVEMENTS['night_owl']['emoji']} {ACHIEVEMENTS['night_owl']['name']}\n"
-                     f"{ACHIEVEMENTS['night_owl']['description']}"
-            )
-        if len(code) > 1000 and 'code_crafter' not in user['achievements']:
-            user['achievements'].append('code_crafter')
-            await user_manager.save_users()
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text=f"🎉 Новое достижение!\n{ACHIEVEMENTS['code_crafter']['emoji']} {ACHIEVEMENTS['code_crafter']['name']}\n"
-                     f"{ACHIEVEMENTS['code_crafter']['description']}"
-            )
-    else:
+    except Exception as e:
+        logger.error(f"Ошибка в done_adding_code: {e}", exc_info=True)
         is_admin = admin_manager.is_admin(update.effective_user.id)
         await update_or_send_message(
             update,
             context,
-            f"❌ Ошибка: Сниппет с именем '{snippet_name}' уже существует или превышены лимиты длины!",
+            "❌ Произошла ошибка при добавлении сниппета. Попробуйте снова.",
             reply_markup=get_main_keyboard(is_admin)
         )
-    context.user_data.clear()
+    finally:
+        context.user_data.clear()
     return ConversationHandler.END
 
 async def review_snippet(update: Update, context: ContextTypes.DEFAULT_TYPE, snippet_id):
@@ -1852,7 +1888,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         logger.warning(f"Неизвестный callback_data: {data}")
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.error(f"Update {update} caused error {context.error}")
+    logger.error(f"Update {update} caused error: {context.error}", exc_info=True)
     if update and (update.message or update.callback_query):
         try:
             is_admin = admin_manager.is_admin(update.effective_user.id)
@@ -1862,8 +1898,10 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "❌ Произошла ошибка. Пожалуйста, попробуйте снова.",
                 reply_markup=get_main_keyboard(is_admin)
             )
+            # Сбрасываем состояния
+            context.user_data.clear()
         except TelegramError as e:
-            logger.error(f"Не удалось отправить сообщение об ошибке: {e}")
+            logger.error(f"Не удалось отправить сообщение об ошибке: {e}", exc_info=True)
 
 def main():
     try:
