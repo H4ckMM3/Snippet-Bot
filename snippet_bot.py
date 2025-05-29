@@ -162,20 +162,53 @@ class UserManager:
         await self.load_users()
 
     async def load_users(self):
-        if os.path.exists(USERS_FILE):
+        if not os.path.exists(USERS_FILE):
+            logger.info(f"Файл {USERS_FILE} не найден, создаём пустой")
+            self.users = {}
             try:
-                async with aiofiles.open(USERS_FILE, 'r', encoding='utf-8') as f:
-                    self.users = json.loads(await f.read())
-            except (json.JSONDecodeError, IOError) as e:
-                logger.error(f"Ошибка при загрузке пользователей: {e}")
+                await self.save_users()
+            except Exception as e:
+                logger.error(f"Ошибка при создании {USERS_FILE}: {e}", exc_info=True)
+            return
+        try:
+            async with aiofiles.open(USERS_FILE, 'r', encoding='utf-8') as f:
+                content = await f.read()
+                if content.strip():
+                    self.users = json.loads(content)
+                    logger.info(f"Загружено {len(self.users)} пользователей")
+                else:
+                    logger.warning(f"Файл {USERS_FILE} пуст, инициализируем пустым")
+                    self.users = {}
+        except (json.JSONDecodeError, IOError) as e:
+            logger.error(f"Ошибка при загрузке пользователей: {e}", exc_info=True)
+            backup_file = f"{USERS_FILE}.bak"
+            if os.path.exists(backup_file):
+                logger.info(f"Попытка восстановления из резервной копии {backup_file}")
+                try:
+                    async with aiofiles.open(backup_file, 'r', encoding='utf-8') as f:
+                        self.users = json.loads(await f.read())
+                        await self.save_users()
+                        logger.info("Пользователи восстановлены из резервной копии")
+                except Exception as e:
+                    logger.error(f"Ошибка восстановления пользователей: {e}", exc_info=True)
+                    self.users = {}
+            else:
                 self.users = {}
 
     async def save_users(self):
         try:
+            # Проверяем права доступа к папке
+            os.makedirs(os.path.dirname(USERS_FILE), exist_ok=True)
+            if os.path.exists(USERS_FILE):
+                import shutil
+                shutil.copy(USERS_FILE, f"{USERS_FILE}.bak")
+                logger.info(f"Создана резервная копия {USERS_FILE}.bak")
             async with aiofiles.open(USERS_FILE, 'w', encoding='utf-8') as f:
                 await f.write(json.dumps(self.users, indent=2, ensure_ascii=False))
-        except IOError as e:
-            logger.error(f"Ошибка при сохранении пользователей: {e}")
+            logger.info(f"Сохранено {len(self.users)} пользователей")
+        except (IOError, OSError) as e:
+            logger.error(f"Ошибка при сохранении пользователей: {e}", exc_info=True)
+            raise
 
     def get_user(self, user_id):
         user_id = str(user_id)
@@ -353,13 +386,53 @@ class SharedSnippetStorage:
                 self.snippets = {}
 
     async def load_pending_snippets(self):
-        if os.path.exists(PENDING_SNIPPETS_FILE):
+        if not os.path.exists(PENDING_SNIPPETS_FILE):
+            logger.info(f"Файл {PENDING_SNIPPETS_FILE} не найден, создаём пустой")
+            self.pending_snippets = {}
             try:
-                async with aiofiles.open(PENDING_SNIPPETS_FILE, 'r', encoding='utf-8') as f:
-                    self.pending_snippets = json.loads(await f.read())
-            except (json.JSONDecodeError, IOError) as e:
-                logger.error(f"Ошибка при загрузке ожидающих сниппетов: {e}")
+                await self.save_pending_snippets()
+            except Exception as e:
+                logger.error(f"Ошибка при создании {PENDING_SNIPPETS_FILE}: {e}", exc_info=True)
+            return
+        try:
+            async with aiofiles.open(PENDING_SNIPPETS_FILE, 'r', encoding='utf-8') as f:
+                content = await f.read()
+                if content.strip():
+                    self.pending_snippets = json.loads(content)
+                    logger.info(f"Загружено {len(self.pending_snippets)} ожидающих сниппетов")
+                else:
+                    logger.warning(f"Файл {PENDING_SNIPPETS_FILE} пуст, инициализируем пустым")
+                    self.pending_snippets = {}
+        except (json.JSONDecodeError, IOError) as e:
+            logger.error(f"Ошибка при загрузке ожидающих сниппетов: {e}", exc_info=True)
+            backup_file = f"{PENDING_SNIPPETS_FILE}.bak"
+            if os.path.exists(backup_file):
+                logger.info(f"Попытка восстановления из резервной копии {backup_file}")
+                try:
+                    async with aiofiles.open(backup_file, 'r', encoding='utf-8') as f:
+                        self.pending_snippets = json.loads(await f.read())
+                        await self.save_pending_snippets()
+                        logger.info("Ожидающие сниппеты восстановлены из резервной копии")
+                except Exception as e:
+                    logger.error(f"Ошибка восстановления ожидающих сниппетов: {e}", exc_info=True)
+                    self.pending_snippets = {}
+            else:
                 self.pending_snippets = {}
+
+    async def save_pending_snippets(self):
+        try:
+            # Проверяем права доступа к папке
+            os.makedirs(os.path.dirname(PENDING_SNIPPETS_FILE), exist_ok=True)
+            if os.path.exists(PENDING_SNIPPETS_FILE):
+                import shutil
+                shutil.copy(PENDING_SNIPPETS_FILE, f"{PENDING_SNIPPETS_FILE}.bak")
+                logger.info(f"Создана резервная копия {PENDING_SNIPPETS_FILE}.bak")
+            async with aiofiles.open(PENDING_SNIPPETS_FILE, 'w', encoding='utf-8') as f:
+                await f.write(json.dumps(self.pending_snippets, indent=2, ensure_ascii=False))
+            logger.info(f"Сохранено {len(self.pending_snippets)} ожидающих сниппетов")
+        except (IOError, OSError) as e:
+            logger.error(f"Ошибка при сохранении ожидающих сниппетов: {e}", exc_info=True)
+            raise
 
     async def save_snippets(self):
         try:
@@ -1149,7 +1222,7 @@ async def get_snippet_code(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return GET_CODE
     return GET_CODE
 
-async def done_adding_code(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def done_adding_code(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
         snippet_name = context.user_data.get('snippet_name')
         code = context.user_data.get('code')
@@ -1208,18 +1281,18 @@ async def done_adding_code(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                 new_achievements.append('code_crafter')
 
             if new_achievements:
-                await user_manager.save_users()
-                for achievement in new_achievements:
-                    ach_info = ACHIEVEMENTS.get(achievement, {'emoji': '❓', 'name': 'Неизвестно', 'description': ''})
-                    try:
+                try:
+                    await user_manager.save_users()
+                    for achievement in new_achievements:
+                        ach_info = ACHIEVEMENTS.get(achievement, {'emoji': '❓', 'name': 'Неизвестно', 'description': ''})
                         await update_or_send_message(
                             update,
                             context,
                             f"🎉 Новое достижение!\n{ach_info['emoji']} {ach_info['name']}\n{ach_info['description']}",
                             force_new=True
                         )
-                    except TelegramError as e:
-                        logger.error(f"Ошибка при отправке уведомления о достижении {achievement}: {e}", exc_info=True)
+                except Exception as e:
+                    logger.error(f"Ошибка при сохранении или отправке достижений: {e}", exc_info=True)
 
             if random.random() < MEME_PROBABILITY:
                 try:

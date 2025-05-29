@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: snippet-bot
+  namespace: amvera-users
+spec:
+  selector:
+    matchLabels:
+      app: amvera-h4ckme3-run-snippetbot
+  template:
+    metadata:
+      labels:
+        app: amvera-h4ckme3-run-snippetbot
+    spec:
+      containers:
+        - name: snippet-bot
+          image: harbor.amvera.ru/amvera-hub/python:3.11
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: snippet-bot-data-pvc

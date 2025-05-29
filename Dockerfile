@@ -19,3 +19,5 @@ ENV PYTHONUNBUFFERED=1
 
 # Запуск бота
 CMD ["python", "snippet_bot.py"]
+
+RUN mkdir -p /app/data && chmod -R 777 /app/data
