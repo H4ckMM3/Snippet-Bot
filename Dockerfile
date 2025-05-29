@@ -3,13 +3,19 @@ FROM python:3.11
 # Устанавливаем рабочую директорию
 WORKDIR /app
 
-# Копируем файлы
-COPY . .
+# Копируем requirements.txt отдельно для кэширования слоя
+COPY requirements.txt .
 
-# Устанавливаем зависимости
-RUN pip install --no-cache-dir -r requirements.txt
+# Обновляем pip и устанавливаем зависимости
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt && \
+    pip check
+
+# Копируем остальные файлы
+COPY main.py .
+
+# Устанавливаем переменную окружения для вывода логов в реальном времени
+ENV PYTHONUNBUFFERED=1
 
 # Запуск бота
-CMD ["python", "main.py"]
-
-chown -R $(whoami) ~/.cache/pip
+CMD ["python", "snippet_bot.py"]
