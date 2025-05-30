@@ -97,7 +97,7 @@ ACHIEVEMENTS = {
 }
 
 CODE_MEMES = [
-"Твой код настолько чистый, что его можно подавать на CodePen! 😎",
+    "Твой код настолько чистый, что его можно подавать на CodePen! 😎",
     "Скопировал код? Не забудь убрать console.log! 😉",
     "PHP? Это же слонячий код! 🐘",
     "CSS: когда ты хотел быть дизайнером, но стал кодером! 🎨",
@@ -197,7 +197,6 @@ class UserManager:
 
     async def save_users(self):
         try:
-            # Проверяем права доступа к папке
             os.makedirs(os.path.dirname(USERS_FILE), exist_ok=True)
             if os.path.exists(USERS_FILE):
                 import shutil
@@ -421,7 +420,6 @@ class SharedSnippetStorage:
 
     async def save_pending_snippets(self):
         try:
-            # Проверяем права доступа к папке
             os.makedirs(os.path.dirname(PENDING_SNIPPETS_FILE), exist_ok=True)
             if os.path.exists(PENDING_SNIPPETS_FILE):
                 import shutil
@@ -440,13 +438,6 @@ class SharedSnippetStorage:
                 await f.write(json.dumps(self.snippets, indent=2, ensure_ascii=False))
         except IOError as e:
             logger.error(f"Ошибка при сохранении сниппетов: {e}")
-
-    async def save_pending_snippets(self):
-        try:
-            async with aiofiles.open(PENDING_SNIPPETS_FILE, 'w', encoding='utf-8') as f:
-                await f.write(json.dumps(self.pending_snippets, indent=2, ensure_ascii=False))
-        except IOError as e:
-            logger.error(f"Ошибка при сохранении ожидающих сниппетов: {e}")
 
     async def add_snippet(self, name, code, language, author, tags=None):
         if name not in self.snippets:
@@ -685,11 +676,12 @@ async def show_user_profile(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("🔙 К списку пользователей", callback_data="back_to_users")]
     ])
-    await update.callback_query.edit_message_text(
+    await update_or_send_message(
+        update,
+        context,
         profile_text,
         reply_markup=keyboard
     )
-
 
 def create_snippets_keyboard(snippets_dict, page=0, callback_prefix="show", extra_data="", show_language=True):
     snippet_names = list(snippets_dict.keys())
@@ -725,30 +717,20 @@ def create_snippets_keyboard(snippets_dict, page=0, callback_prefix="show", extr
         keyboard.append(nav_buttons)
     return InlineKeyboardMarkup(keyboard), total_pages
 
-async def update_or_send_message(update: Update, context: ContextTypes.DEFAULT_TYPE, text, reply_markup=None, parse_mode=None, force_new=False):
-    last_message_id = context.user_data.get('last_message_id') if not force_new else None
+async def update_or_send_message(update: Update, context: ContextTypes.DEFAULT_TYPE, text, reply_markup=None, parse_mode=None):
     chat_id = update.effective_chat.id
+    last_message_id = context.user_data.get('last_message_id')
+
+    # Пытаемся удалить предыдущее сообщение, если оно существует
+    if last_message_id:
+        try:
+            await context.bot.delete_message(chat_id=chat_id, message_id=last_message_id)
+            logger.debug(f"Удалено предыдущее сообщение с ID {last_message_id}")
+        except TelegramError as e:
+            logger.warning(f"Не удалось удалить сообщение {last_message_id}: {e}")
+
+    # Отправляем новое сообщение
     try:
-        if last_message_id:
-            await context.bot.edit_message_text(
-                text=text,
-                chat_id=chat_id,
-                message_id=last_message_id,
-                reply_markup=reply_markup,
-                parse_mode=parse_mode
-            )
-            return last_message_id
-        else:
-            message = await context.bot.send_message(
-                chat_id=chat_id,
-                text=text,
-                reply_markup=reply_markup,
-                parse_mode=parse_mode
-            )
-            context.user_data['last_message_id'] = message.message_id
-            return message.message_id
-    except TelegramError as e:
-        logger.warning(f"Не удалось отредактировать сообщение {last_message_id}: {e}")
         message = await context.bot.send_message(
             chat_id=chat_id,
             text=text,
@@ -756,7 +738,11 @@ async def update_or_send_message(update: Update, context: ContextTypes.DEFAULT_T
             parse_mode=parse_mode
         )
         context.user_data['last_message_id'] = message.message_id
+        logger.debug(f"Отправлено новое сообщение с ID {message.message_id}")
         return message.message_id
+    except TelegramError as e:
+        logger.error(f"Ошибка при отправке сообщения: {e}")
+        raise
 
 async def send_random_meme(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id):
     user = user_manager.get_user(user_id)
@@ -771,15 +757,13 @@ async def send_random_meme(update: Update, context: ContextTypes.DEFAULT_TYPE, u
         await update_or_send_message(
             update,
             context,
-            f"🎉 Новое достижение!\n😂 Кодовый комедиант\nУвидел 10 разных мемов от бота",
-            force_new=True
+            f"🎉 Новое достижение!\n😂 Кодовый комедиант\nУвидел 10 разных мемов от бота"
         )
     await user_manager.save_users()
     await update_or_send_message(
         update,
         context,
-        meme,
-        force_new=True
+        meme
     )
 
 async def notify_admins(context: ContextTypes.DEFAULT_TYPE, snippet_name, snippet_data):
@@ -906,15 +890,13 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update_or_send_message(
                     update,
                     context,
-                    f"🎉 Новое достижение!\n{ach_info['emoji']} {ach_info['name']}\n{ach_info['description']}",
-                    force_new=True
+                    f"🎉 Новое достижение!\n{ach_info['emoji']} {ach_info['name']}\n{ach_info['description']}"
                 )
         if level_up:
             await update_or_send_message(
                 update,
                 context,
-                f"🎊 Поздравляем! Вы достигли уровня {level_info['emoji']} {level_info['name']}!",
-                force_new=True
+                f"🎊 Поздравляем! Вы достигли уровня {level_info['emoji']} {level_info['name']}!"
             )
         if random.random() < MEME_PROBABILITY:
             await send_random_meme(update, context, user.id)
@@ -929,7 +911,6 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 async def show_filters(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    is_admin = admin_manager.is_admin(update.effective_user.id)
     await update_or_send_message(
         update,
         context,
@@ -967,18 +948,7 @@ async def show_favorites(update: Update, context: ContextTypes.DEFAULT_TYPE, pag
     context.user_data['navigation']['current_page'] = page
     keyboard, total_pages = create_snippets_keyboard(favorite_snippets, page, "show", "_fav")
     text = f"📖 Избранные сниппеты (стр. {page+1}/{total_pages}):"
-    if update.message:
-        await update_or_send_message(update, context, text=text, reply_markup=keyboard)
-    elif hasattr(update, 'callback_query') and update.callback_query:
-        await update.callback_query.edit_message_text(text=text, reply_markup=keyboard)
-    else:
-        logger.error(f"Неверный тип обновления в show_favorites: {update}")
-        await update_or_send_message(
-            update,
-            context,
-            text="❌ Ошибка при отображении избранного. Попробуйте снова.",
-            reply_markup=get_main_keyboard(is_admin)
-        )
+    await update_or_send_message(update, context, text=text, reply_markup=keyboard)
 
 async def show_statistics(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total_snippets = len(storage.snippets)
@@ -1063,6 +1033,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     is_admin = admin_manager.is_admin(update.effective_user.id)
     await update_or_send_message(update, context, "Действие отменено!", reply_markup=get_main_keyboard(is_admin))
+    context.user_data.clear()
     return ConversationHandler.END
 
 async def add_snippet_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -1222,7 +1193,7 @@ async def get_snippet_code(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return GET_CODE
     return GET_CODE
 
-async def done_adding_code(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def done_adding_code(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
         snippet_name = context.user_data.get('snippet_name')
         code = context.user_data.get('code')
@@ -1288,8 +1259,7 @@ async def done_adding_code(self, update: Update, context: ContextTypes.DEFAULT_T
                         await update_or_send_message(
                             update,
                             context,
-                            f"🎉 Новое достижение!\n{ach_info['emoji']} {ach_info['name']}\n{ach_info['description']}",
-                            force_new=True
+                            f"🎉 Новое достижение!\n{ach_info['emoji']} {ach_info['name']}\n{ach_info['description']}"
                         )
                 except Exception as e:
                     logger.error(f"Ошибка при сохранении или отправке достижений: {e}", exc_info=True)
@@ -1337,7 +1307,9 @@ async def review_snippet(update: Update, context: ContextTypes.DEFAULT_TYPE, sni
         ],
         [InlineKeyboardButton("🔍 Назад", callback_data="back_to_pending")]
     ])
-    await update.callback_query.edit_message_text(
+    await update_or_send_message(
+        update,
+        context,
         f"📋 Сниппет на модерации: '{snippet_name}'\n"
         f"{language_emoji} Язык: {snippet['language']}\n"
         f"👤 Автор: {snippet['author']}\n"
@@ -1376,7 +1348,7 @@ async def approve_snippet(update: Update, context: ContextTypes.DEFAULT_TYPE):
             chat_id=user_id,
             text=f"✅ Ваш сниппет '{snippet_name}' одобрен и добавлен в библиотеку!"
         )
-        await query.edit_message_text(f"✅ Сниппет '{snippet_name}' одобрен!")
+        await update_or_send_message(update, context, f"✅ Сниппет '{snippet_name}' одобрен!")
         snippets_count, uses_count = storage.get_user_snippets_stats(snippet['author'])
         level_up, new_achievements = await user_manager.update_user_stats(user_id, snippets_count, uses_count)
         if new_achievements:
@@ -1423,14 +1395,16 @@ async def reject_snippet(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer("❌ Ошибка или недостаточно прав!")
         return
     snippet = storage.pending_snippets.get(snippet_name)
-    if not snippet:
+    if not snippet:         
         await query.answer("❌ Сниппет не найден!")
         return
     context.user_data['reject_snippet_id'] = snippet_id
     user = user_manager.get_user(update.effective_user.id)
     user['rejected_snippets'] = user.get('rejected_snippets', 0) + 1
     await user_manager.save_users()
-    await query.edit_message_text(
+    await update_or_send_message(
+        update,
+        context,
         f"⚠️ Укажите причину отклонения сниппета '{snippet_name}':",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Отмена", callback_data="cancel_reject")]])
     )
@@ -1559,10 +1533,7 @@ async def show_all_snippets(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     context.user_data['navigation']['current_page'] = page
     keyboard, total_pages = create_snippets_keyboard(storage.snippets, page, "show")
     text = f"📖 Все сниппеты (стр. {page+1}/{total_pages}):"
-    if update.message:
-        await update_or_send_message(update, context, text, reply_markup=keyboard)
-    elif update.callback_query:
-        await update.callback_query.edit_message_text(text, reply_markup=keyboard)
+    await update_or_send_message(update, context, text, reply_markup=keyboard)
 
 async def show_snippet(update: Update, context: ContextTypes.DEFAULT_TYPE, snippet_id):
     snippets_map = context.user_data.get('snippets_map', {})
@@ -1586,21 +1557,13 @@ async def show_snippet(update: Update, context: ContextTypes.DEFAULT_TYPE, snipp
         snippet_text += f"🗂️ Теги: {', '.join(snippet['tags'])}\n"
     snippet_text += f"\n\n```{snippet['language'].lower()}\n{snippet['code']}\n```"
     keyboard = get_quick_actions_keyboard(snippet_name, update.effective_user.id, is_author)
-    try:
-        await update.callback_query.edit_message_text(
-            snippet_text,
-            reply_markup=keyboard,
-            parse_mode='Markdown'
-        )
-    except TelegramError as e:
-        logger.error(f"Ошибка при редактировании сообщения: {e}")
-        await update_or_send_message(
-            update,
-            context,
-            snippet_text,
-            reply_markup=keyboard,
-            parse_mode='Markdown'
-        )
+    await update_or_send_message(
+        update,
+        context,
+        snippet_text,
+        reply_markup=keyboard,
+        parse_mode='Markdown'
+    )
 
 async def delete_snippet_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     author = update.effective_user.username or update.effective_user.full_name
@@ -1670,8 +1633,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "🔗 Ссылка: [https://github.com/H4ckMM3/FTP-Backup](https://github.com/H4ckMM3/FTP-Backup.git)\n"
                 "📝 Описание: FTP Backup — мощный плагин для Sublime Text, предназначенный для автоматического создания резервных копий ваших файлов.",
                 reply_markup=get_main_keyboard(is_admin),
-                parse_mode='Markdown',
-                force_new=True
+                parse_mode='Markdown'
             )
         except TelegramError as e:
             logger.error(f"Ошибка при отправке сообщения FTP BackUp: {e}")
@@ -1797,7 +1759,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if snippet:
                     is_author = snippet['author'] == (query.from_user.username or query.from_user.full_name)
                     keyboard = get_quick_actions_keyboard(snippet_name, query.from_user.id, is_author)
-                    await query.edit_message_reply_markup(reply_markup=keyboard)
+                    await update_or_send_message(update, context, query.message.text, reply_markup=keyboard, parse_mode='Markdown')
             else:
                 await query.answer("⚠️ Уже в избранном!")
     elif data.startswith("unfav_"):
@@ -1810,7 +1772,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if snippet:
                     is_author = snippet['author'] == (query.from_user.username or query.from_user.full_name)
                     keyboard = get_quick_actions_keyboard(snippet_name, query.from_user.id, is_author)
-                    await query.edit_message_reply_markup(reply_markup=keyboard)
+                    await update_or_send_message(update, context, query.message.text, reply_markup=keyboard, parse_mode='Markdown')
             else:
                 await query.answer("⚠️ Не было в избранном!")
     elif data.startswith("delete_"):
@@ -1825,7 +1787,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         InlineKeyboardButton("❌ Нет", callback_data="cancel_delete")
                     ]
                 ])
-                await query.edit_message_text(
+                await update_or_send_message(
+                    update,
+                    context,
                     f"⚠️ Вы уверены, что хотите удалить '{snippet_name}'?\n"
                     f"Это действие нельзя отменить!",
                     reply_markup=keyboard
@@ -1842,14 +1806,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     if snippet_name in user_data['favorites']:
                         user_data['favorites'].remove(snippet_name)
                 await user_manager.save_users()
-                await query.edit_message_text(f"✅ Сниппет '{snippet_name}' удалён!")
+                await update_or_send_message(update, context, f"✅ Сниппет '{snippet_name}' удалён!")
                 context.user_data['snippets_map'].pop(snippet_id, None)
                 if random.random() < 0.3:
                     await send_random_meme(update, context, query.from_user.id)
             else:
                 await query.answer("❌ Ошибка при удалении!")
     elif data == "cancel_delete":
-        await query.edit_message_text("❌ Удаление отменено")
+        await update_or_send_message(update, context, "❌ Удаление отменено")
     elif data == "back_to_list":
         navigation = context.user_data.get('navigation', {})
         current_list = navigation.get('current_list')
@@ -1862,7 +1826,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             search_query = navigation.get('search_query', '')
             results = navigation.get('current_snippets', {})
             keyboard, total_pages = create_snippets_keyboard(results, page, "show", "_search")
-            await query.edit_message_text(
+            await update_or_send_message(
+                update,
+                context,
                 f"🔍 Найдено {len(results)} сниппетов по запросу '{search_query}' (стр. {page+1}/{total_pages}):",
                 reply_markup=keyboard
             )
@@ -1870,7 +1836,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             filter_name = navigation.get('filter_name', 'фильтру')
             results = navigation.get('current_snippets', {})
             keyboard, total_pages = create_snippets_keyboard(results, page, "show", "_filtered")
-            await query.edit_message_text(
+            await update_or_send_message(
+                update,
+                context,
                 f"🎯 Найдено {len(results)} сниппетов по {filter_name} (стр. {page+1}/{total_pages}):",
                 reply_markup=keyboard
             )
@@ -1884,7 +1852,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             navigation = context.user_data.get('navigation', {})
             results = navigation.get('current_snippets', {})
             if not results:
-                await query.edit_message_text("❌ Сниппеты не найдены")
+                await update_or_send_message(update, context, "❌ Сниппеты не найдены")
                 return
             if "_fav" in data or navigation.get('current_list') == 'favorites':
                 await show_favorites(update, context, page)
@@ -1892,7 +1860,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 search_query = navigation.get('search_query', '')
                 navigation['current_page'] = page
                 keyboard, total_pages = create_snippets_keyboard(results, page, "show", "_search")
-                await query.edit_message_text(
+                await update_or_send_message(
+                    update,
+                    context,
                     f"🔍 Найдено {len(results)} сниппетов по запросу '{search_query}' (стр. {page+1}/{total_pages}):",
                     reply_markup=keyboard
                 )
@@ -1900,14 +1870,18 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 filter_name = navigation.get('filter_name', 'фильтру')
                 navigation['current_page'] = page
                 keyboard, total_pages = create_snippets_keyboard(results, page, "show", "_filtered")
-                await query.edit_message_text(
-                                        f"🎯 Найдено {len(results)} сниппетов по {filter_name} (стр. {page+1}/{total_pages}):",
+                await update_or_send_message(
+                    update,
+                    context,
+                    f"🎯 Найдено {len(results)} сниппетов по {filter_name} (стр. {page+1}/{total_pages}):",
                     reply_markup=keyboard
                 )
             elif action == "pending":
                 navigation['current_page'] = page
                 keyboard, total_pages = get_pending_snippets_keyboard(page)
-                await query.edit_message_text(
+                await update_or_send_message(
+                    update,
+                    context,
                     f"🖋 Сниппеты на модерации (стр. {page+1}/{total_pages}):",
                     reply_markup=keyboard
                 )
@@ -1921,27 +1895,29 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("reject_"):
         await reject_snippet(update, context)
     elif data == "cancel_reject":
-        await query.edit_message_text("❌ Отклонение отменено")
+        await update_or_send_message(update, context, "❌ Отклонение отменено")
         context.user_data.pop('waiting_for_reject_reason', None)
         context.user_data.pop('reject_snippet_id', None)
     elif data == "back_to_pending":
         keyboard, total_pages = get_pending_snippets_keyboard(page=0)
-        await query.edit_message_text(f"🖋 Сниппеты на модерации (стр. 1/{total_pages}):", reply_markup=keyboard)
+        await update_or_send_message(update, context, f"🖋 Сниппеты на модерации (стр. 1/{total_pages}):", reply_markup=keyboard)
     elif data == "admin_pending":
         await pending_snippets(update, context)
     elif data == "admin_menu":
         await admin_menu(update, context)
     elif data == "back_to_admin":
-        await query.edit_message_text(
+        await update_or_send_message(
+            update,
+            context,
             "🔧 Админ-меню:\nВыберите действие:",
             reply_markup=get_admin_keyboard()
         )
     elif data == "back_to_main":
         await update_or_send_message(
-        update,
-        context,
-        "🏠 Главное меню",
-        reply_markup=get_main_keyboard(is_admin)
+            update,
+            context,
+            "🏠 Главное меню",
+            reply_markup=get_main_keyboard(is_admin)
         )
         context.user_data.pop('last_message_id', None)
     elif data == "admin_users":
@@ -1960,6 +1936,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pass
     else:
         logger.warning(f"Неизвестный callback_data: {data}")
+
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.error(f"Update {update} caused error: {context.error}", exc_info=True)
     if update and (update.message or update.callback_query):
@@ -1971,7 +1948,6 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "❌ Произошла ошибка. Пожалуйста, попробуйте снова.",
                 reply_markup=get_main_keyboard(is_admin)
             )
-            # Сбрасываем состояния
             context.user_data.clear()
         except TelegramError as e:
             logger.error(f"Не удалось отправить сообщение об ошибке: {e}", exc_info=True)
@@ -1992,7 +1968,7 @@ def main():
         )
 
         application.add_handler(CommandHandler("start", start))
-        application.add_handler(CommandHandler("admin", admin_menu))  # Сохранена для совместимости
+        application.add_handler(CommandHandler("admin", admin_menu))
         application.add_handler(CommandHandler("addadmin", add_admin))
         application.add_handler(CommandHandler("pending", pending_snippets))
         application.add_handler(CommandHandler("search", search_snippets))
